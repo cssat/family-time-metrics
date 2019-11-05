@@ -58,3 +58,30 @@ WHERE "requestDate" BETWEEN '2019-10-01'
 GROUP BY "initialVisitPlanId"
 	,"visitPlanId"
 	,"organizationId"
+
+
+SELECT DISTINCT "initialVisitPlanId"
+	,"visitPlanId"
+	,"OrganizationId"
+	,sr.id
+	,st.NAME
+	,DATE
+	,"StageTypeId"
+	,'' AS "from"
+	,'' AS "to"
+FROM staging."ServiceReferrals" AS sr
+LEFT JOIN (
+	SELECT "ServiceReferralId"
+		,"StageTypeId"
+		,"OrganizationId"
+		,min(DATE) AS DATE
+	FROM staging."ServiceReferralTimelineStages"
+	GROUP BY "ServiceReferralId"
+		,"StageTypeId"
+		,"OrganizationId"
+	) AS srts ON sr.id = srts."ServiceReferralId"
+LEFT JOIN staging."StageTypes" AS st ON srts."StageTypeId" = st.id
+WHERE "requestDate" BETWEEN '2019-10-01'
+		AND now()
+	AND "formVersion" = 'Ingested'
+	AND "organizationId" != 1
