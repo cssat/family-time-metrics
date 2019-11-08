@@ -1,14 +1,92 @@
-SELECT DISTINCT CASE 
-		WHEN "initialVisitPlanId" = 0
-			THEN "visitPlanId"::INTEGER
-		ELSE "initialVisitPlanId"
+with "childDetailsRaw" AS
+(
+SELECT
+  sr.id
+	,json_array_elements("childDetails")->>'childFamlinkPersonID' id_prsn_child
+	,json_array_elements("childDetails")->>'childOpd' original_placement_date_dirty
+FROM staging."ServiceReferrals" sr
+WHERE "requestDate" BETWEEN '2019-10-01'
+		AND now()
+	AND "formVersion" = 'Ingested'
+	AND "organizationId" != 1
+), "parentDetailsRaw" AS
+(
+SELECT
+  sr.id
+  ,json_array_elements("parentGuardianDetails")->>'parentGuardianId' id_prsn_parent
+FROM staging."ServiceReferrals" sr
+WHERE "requestDate" BETWEEN '2019-10-01'
+		AND now()
+	AND "formVersion" = 'Ingested'
+	AND "organizationId" != 1
+), "childDetails" AS
+(
+SELECT DISTINCT
+  c1.id
+  ,CASE
+    WHEN id_prsn_child IS NOT NULL
+    THEN id_prsn_child
+    ELSE 0::TEXT
+  END id_prsn_child
+	,CASE
+	  WHEN original_placement_date_dirty ~* '-'
+	  THEN TO_DATE(original_placement_date_dirty, 'YYYY-MM-DD')
+	  WHEN original_placement_date_dirty ~* '/'
+	  THEN TO_DATE(original_placement_date_dirty, 'MM/DD/YYYY')
+	 END AS original_placement_date
+FROM "childDetailsRaw" c1
+), "parentDetails" AS
+(
+SELECT DISTINCT
+  c1.id
+  ,CASE
+    WHEN id_prsn_parent::INTEGER IS NOT NULL
+    THEN id_prsn_parent
+    ELSE 0::TEXT
+  END id_prsn_parent
+FROM "parentDetailsRaw" c1
+), "childAndParentDetails" as
+(
+SELECT
+  sr.id
+  ,sr."caseNumber"
+  ,COALESCE(id_prsn_child, 0::TEXT) id_prsn_child
+  ,COALESCE(id_prsn_parent, 0::TEXT) id_prsn_parent
+  ,original_placement_date
+	 ,DENSE_RANK ()
+	  OVER (
+      ORDER BY
+        COALESCE(id_prsn_child, 0::TEXT)
+        ,sr."caseNumber"
+        ,COALESCE(id_prsn_parent, 0::TEXT)
+   ) visitation_group
+FROM staging."ServiceReferrals" sr
+  LEFT JOIN "childDetails" cr
+    on sr.id = cr.id
+  LEFT JOIN "parentDetails" pr
+    on pr.id = cr.id
+)
+
+
+SELECT DISTINCT
+  sr.id
+  ,CASE
+		WHEN sr."initialVisitPlanId" = 0
+			THEN sr."visitPlanId"::INTEGER
+		ELSE sr."initialVisitPlanId"
 		END AS "initialVisitPlanId"
-	,"visitPlanId"
+	,sr."visitPlanId"
+	,cpd.original_placement_date
+	,cpd.id_prsn_child
+	,cpd.id_prsn_parent
+	,cpd.visitation_group
 	,NULL::INTEGER AS "organizationId"
 	,"requestDate" AS "date"
 	,'visitation_needed' AS "from"
 	,'sw_request' AS "to"
 FROM staging."ServiceReferrals" AS sr
+  LEFT JOIN "childAndParentDetails" cpd
+    ON sr.id = cpd.id
 WHERE "requestDate" BETWEEN '2019-10-01'
 		AND now()
 	AND "formVersion" = 'Ingested'
@@ -16,17 +94,25 @@ WHERE "requestDate" BETWEEN '2019-10-01'
 
 UNION
 
-SELECT DISTINCT CASE 
+SELECT DISTINCT
+  sr.id
+  ,CASE
 		WHEN "initialVisitPlanId" = 0
 			THEN "visitPlanId"::INTEGER
 		ELSE "initialVisitPlanId"
 		END AS "initialVisitPlanId"
 	,"visitPlanId"
+	,cpd.original_placement_date
+	,cpd.id_prsn_child
+	,cpd.id_prsn_parent
+	,cpd.visitation_group
 	,NULL::INTEGER AS "organizationId"
 	,"visitPlanApprovedDate" AS "date"
 	,'sw_request' AS "from"
 	,'approved' AS "to"
 FROM staging."ServiceReferrals" AS sr
+  LEFT JOIN "childAndParentDetails" cpd
+    ON sr.id = cpd.id
 WHERE "requestDate" BETWEEN '2019-10-01'
 		AND now()
 	AND "formVersion" = 'Ingested'
@@ -34,18 +120,27 @@ WHERE "requestDate" BETWEEN '2019-10-01'
 
 UNION
 
-SELECT CASE 
+SELECT
+  sr.id
+  ,CASE
 		WHEN "initialVisitPlanId" = 0
 			THEN "visitPlanId"::INTEGER
 		ELSE "initialVisitPlanId"
 		END AS "initialVisitPlanId"
 	,"visitPlanId"
+	,cpd.original_placement_date
+	,cpd.id_prsn_child
+	,cpd.id_prsn_parent
+	,cpd.visitation_group
 	,"organizationId"
 	,min(sr."updatedAt") AS "date"
 	,'approved' AS "from"
 	,'vc_received' AS "to"
 FROM staging."ServiceReferrals" AS sr
-LEFT JOIN staging."Organizations" AS o ON sr."organizationId" = o.id
+  LEFT JOIN staging."Organizations" AS o
+    ON sr."organizationId" = o.id
+  LEFT JOIN "childAndParentDetails" cpd
+    ON sr.id = cpd.id
 WHERE "requestDate" BETWEEN '2019-10-01'
 		AND now()
 	AND "formVersion" = 'Ingested'
@@ -55,21 +150,35 @@ WHERE "requestDate" BETWEEN '2019-10-01'
 		FROM staging."Organizations"
 		WHERE "routingOrg"
 		)
-GROUP BY "initialVisitPlanId"
+	AND (
+		"initialVisitPlanId" = 1174068
+		OR "visitPlanId" = '1174068'
+		)
+GROUP BY sr.id, "initialVisitPlanId"
 	,"visitPlanId"
 	,"organizationId"
+	,cpd.original_placement_date
+	,cpd.id_prsn_child
+	,cpd.id_prsn_parent
+	,cpd.visitation_group
 
 UNION
 
-SELECT DISTINCT CASE 
+SELECT DISTINCT
+  sr.id
+  ,CASE
 		WHEN "initialVisitPlanId" = 0
 			THEN "visitPlanId"::INTEGER
 		ELSE "initialVisitPlanId"
 		END AS "initialVisitPlanId"
 	,"visitPlanId"
+	,cpd.original_placement_date
+	,cpd.id_prsn_child
+	,cpd.id_prsn_parent
+	,cpd.visitation_group
 	,"OrganizationId"
 	,DATE
-	,CASE 
+	,CASE
 		WHEN "StageTypeId" = 7
 			THEN 'vc_received'
 		WHEN "StageTypeId" IN (
@@ -85,7 +194,7 @@ SELECT DISTINCT CASE
 			THEN 'not_sure'
 		ELSE ''
 		END AS "from"
-	,CASE 
+	,CASE
 		WHEN "StageTypeId" = 7
 			THEN 'vc_received_timeline'
 		WHEN "StageTypeId" = 8
@@ -111,6 +220,8 @@ LEFT JOIN (
 		,"StageTypeId"
 		,"OrganizationId"
 	) AS srts ON sr.id = srts."ServiceReferralId"
+LEFT JOIN "childAndParentDetails" cpd
+  ON sr.id = cpd.id
 WHERE "requestDate" BETWEEN '2019-10-01'
 		AND now()
 	AND "formVersion" = 'Ingested'
@@ -118,17 +229,25 @@ WHERE "requestDate" BETWEEN '2019-10-01'
 
 UNION
 
-SELECT CASE 
+SELECT
+  sr.id
+  ,CASE
 		WHEN "initialVisitPlanId" = 0
 			THEN "visitPlanId"::INTEGER
 		ELSE "initialVisitPlanId"
-		END AS "initialVisitPlanId"
+	END AS "initialVisitPlanId"
 	,"visitPlanId"
+	,cpd.original_placement_date
+	,cpd.id_prsn_child
+	,cpd.id_prsn_parent
+	,cpd.visitation_group
 	,"organizationId"
 	,"deletedAt" AS "date"
 	,'vc_received_timeline' AS "from"
 	,'deleted' AS "to"
-FROM staging."ServiceReferrals"
+FROM staging."ServiceReferrals" sr
+  LEFT JOIN "childAndParentDetails" cpd
+    ON sr.id = cpd.id
 WHERE "requestDate" BETWEEN '2019-10-01'
 		AND now()
 	AND "formVersion" = 'Ingested'
