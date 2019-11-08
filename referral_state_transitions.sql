@@ -55,10 +55,6 @@ WHERE "requestDate" BETWEEN '2019-10-01'
 		FROM staging."Organizations"
 		WHERE "routingOrg"
 		)
-	AND (
-		"initialVisitPlanId" = 1174068
-		OR "visitPlanId" = '1174068'
-		)
 GROUP BY "initialVisitPlanId"
 	,"visitPlanId"
 	,"organizationId"
