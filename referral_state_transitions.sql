@@ -118,6 +118,58 @@ WHERE "requestDate" BETWEEN '2019-10-01'
 
 UNION
 
+SELECT "initialVisitPlanId"
+	,"visitPlanId"
+	,"organizationId"
+	,"updatedAt" AS DATE
+	,'vc_received_timeline' AS
+FROM
+	,'vc_received' AS TO
+FROM (
+	SELECT "initialVisitPlanId"
+		,"visitPlanId"
+		,"organizationId"
+		,"updatedAt"
+		,"routingOrg"
+		,LEAD("organizationId", 1, NULL) OVER (
+			PARTITION BY "initialVisitPlanId" ORDER BY "versionId"
+			) AS lead_org
+		,CASE 
+			WHEN "routingOrg" IS NOT NULL
+				AND LEAD("routingOrg", 1, NULL) OVER (
+					PARTITION BY "initialVisitPlanId" ORDER BY "versionId"
+					) IS NOT NULL
+				THEN CASE 
+						WHEN "organizationId" != LEAD("organizationId", 1, NULL) OVER (
+								PARTITION BY "initialVisitPlanId" ORDER BY "versionId"
+								)
+							THEN 1
+						END
+			END new_org
+	FROM (
+		SELECT "versionId"
+			,CASE 
+				WHEN "initialVisitPlanId" = 0
+					THEN "visitPlanId"::INTEGER
+				ELSE "initialVisitPlanId"
+				END AS "initialVisitPlanId"
+			,"visitPlanId"
+			,"organizationId"
+			,sr."updatedAt"
+			,o."routingOrg"
+		FROM staging."ServiceReferrals" AS sr
+		LEFT JOIN staging."Organizations" AS o ON o.id = sr."organizationId"
+			AND o."routingOrg"
+		WHERE "requestDate" BETWEEN '2019-10-01'
+				AND now()
+			AND "formVersion" = 'Ingested'
+			AND "organizationId" != 1
+		) AS new_ro
+	) AS dat
+WHERE new_org = 1
+
+UNION
+
 SELECT CASE 
 		WHEN "initialVisitPlanId" = 0
 			THEN "visitPlanId"::INTEGER
