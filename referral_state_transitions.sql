@@ -220,13 +220,10 @@ SELECT "initialVisitPlanId"
   ,id_prsn_parent
   ,original_placement_date
   ,visitation_group
-	,"organizationId"
-	,"updatedAt" AS DATE
-	,'vc_received_timeline' AS FROM
-	,"organizationId"
-	,"updatedAt" AS DATE
-	,'vc_received_timeline' AS TO
-FROM
+  ,"organizationId"
+  ,"updatedAt" AS DATE
+  ,'vc_received_timeline' AS 'from'
+  ,'vc_received_timeline' AS 'to'
 FROM (
 	SELECT "initialVisitPlanId"
 		,"visitPlanId"
