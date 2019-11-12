@@ -223,7 +223,10 @@ SELECT "initialVisitPlanId"
 	,"organizationId"
 	,"updatedAt" AS DATE
 	,'vc_received_timeline' AS FROM
-	,'vc_received' AS TO
+	,"organizationId"
+	,"updatedAt" AS DATE
+	,'vc_received_timeline' AS TO
+FROM
 FROM (
 	SELECT "initialVisitPlanId"
 		,"visitPlanId"
